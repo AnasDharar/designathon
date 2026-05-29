@@ -87,7 +87,12 @@ async def create_vibe_from_uploads(
 
     upload_root = Path(settings.storage_path).resolve()
     vibe_dir = upload_root / str(vibe.id)
-    vibe_dir.mkdir(parents=True, exist_ok=True)
+    storage_available = True
+    try:
+        vibe_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Serverless file systems may be read-only or ephemeral.
+        storage_available = False
 
     ai_images: list[tuple[bytes, str]] = []
     for idx, (content, mime_type, original_name) in enumerate(images, start=1):
@@ -97,16 +102,23 @@ async def create_vibe_from_uploads(
         elif mime_type == "image/webp":
             suffix = ".webp"
 
-        file_name = f"{idx}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}{suffix}"
-        file_path = vibe_dir / file_name
-        file_path.write_bytes(content)
+        file_path_str: str | None = None
+        if storage_available:
+            try:
+                file_name = f"{idx}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}{suffix}"
+                file_path = vibe_dir / file_name
+                file_path.write_bytes(content)
+                file_path_str = str(file_path)
+            except Exception:
+                # Keep flow non-blocking if disk write fails in production.
+                storage_available = False
 
         reference = VibeReference(
             id=uuid.uuid4(),
             vibe_id=vibe.id,
             source_type="upload",
             source_url=None,
-            storage_path=str(file_path),
+            storage_path=file_path_str,
             thumbnail_path=None,
             analysis={"filename": original_name, "mime_type": mime_type},
             sort_order=idx - 1,

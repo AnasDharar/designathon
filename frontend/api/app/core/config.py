@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     ai_model: str = "gemini-2.5-flash"
 
-    storage_path: str = "./api/storage/uploads"
+    storage_path: str = "/tmp/vibes/uploads"
     max_upload_size_mb: int = 10
 
     model_config = {"extra": "ignore"}
