@@ -49,3 +49,15 @@ class UIGenerateRequest(BaseModel):
 
 class UIGenerateResponse(BaseModel):
     prompt_text: str
+
+
+class CritiqueResponse(BaseModel):
+    id: str
+    vibe_id: str
+    scores: dict
+    feedback: dict
+    summary: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

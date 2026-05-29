@@ -141,3 +141,99 @@ def analyze_uploaded_images(images: list[tuple[bytes, str]], title: str, descrip
     except Exception as exc:
         logger.exception("Gemini aesthetic analysis failed")
         return _fallback_analysis(f"Gemini failed: {exc}")
+
+
+def critique_design_against_vibe(
+    image: tuple[bytes, str],
+    vibe_title: str,
+    vibe_description: str | None,
+    vibe_scores: dict[str, Any] | None,
+) -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        return {
+            "scores": {
+                "alignment": 0.5,
+                "hierarchy": 0.5,
+                "typography": 0.5,
+                "spacing": 0.5,
+                "consistency": 0.5,
+            },
+            "feedback": {
+                "whatWorks": ["Critique unavailable because GEMINI_API_KEY is missing."],
+                "whatDrifted": ["Could not compare against target vibe without AI analysis."],
+                "seniorAdvice": ["Configure Gemini API key to enable detailed critique."],
+            },
+            "summary": "Critique could not be generated yet. Please retry.",
+        }
+
+    from langchain_core.messages import HumanMessage
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    image_bytes, mime_type = image
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    prompt = f"""
+You are a senior product design critic.
+Evaluate one uploaded UI design against this target vibe:
+- title: {vibe_title}
+- description: {vibe_description or ""}
+- target_scores: {json.dumps(vibe_scores or {}, ensure_ascii=False)}
+
+Return ONLY valid JSON in this exact shape:
+{{
+  "scores": {{
+    "alignment": 0.0-1.0,
+    "hierarchy": 0.0-1.0,
+    "typography": 0.0-1.0,
+    "spacing": 0.0-1.0,
+    "consistency": 0.0-1.0
+  }},
+  "feedback": {{
+    "whatWorks": ["short bullet", "short bullet", "short bullet"],
+    "whatDrifted": ["short bullet", "short bullet", "short bullet"],
+    "seniorAdvice": ["actionable bullet", "actionable bullet", "actionable bullet"]
+  }},
+  "summary": "2-4 sentence concise assessment"
+}}
+"""
+    llm = ChatGoogleGenerativeAI(
+        model=settings.ai_model,
+        google_api_key=settings.gemini_api_key,
+        temperature=0.2,
+    )
+    response = llm.invoke(
+        [
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": f"data:{mime_type};base64,{encoded}"},
+                ]
+            )
+        ]
+    )
+    response_text = response.content if isinstance(response.content, str) else str(response.content)
+    parsed = _extract_json(response_text)
+    if not parsed:
+        raise ValueError("Gemini returned non-JSON critique output")
+
+    raw_scores = parsed.get("scores", {})
+    normalized_scores = {}
+    for key in ["alignment", "hierarchy", "typography", "spacing", "consistency"]:
+        try:
+            value = float(raw_scores.get(key, 0.5))
+        except (TypeError, ValueError):
+            value = 0.5
+        normalized_scores[key] = max(0.0, min(1.0, value))
+
+    feedback = parsed.get("feedback", {}) or {}
+    summary = str(parsed.get("summary") or "Critique generated.")
+
+    return {
+        "scores": normalized_scores,
+        "feedback": {
+            "whatWorks": [str(x) for x in (feedback.get("whatWorks") or [])][:5],
+            "whatDrifted": [str(x) for x in (feedback.get("whatDrifted") or [])][:5],
+            "seniorAdvice": [str(x) for x in (feedback.get("seniorAdvice") or [])][:5],
+        },
+        "summary": summary,
+    }

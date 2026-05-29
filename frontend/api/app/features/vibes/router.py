@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.features.vibes import service
-from app.features.vibes.schemas import VibeCreate, VibeUpdate, VibeResponse, UIGenerateRequest, UIGenerateResponse
+from app.features.vibes.schemas import (
+    VibeCreate,
+    VibeUpdate,
+    VibeResponse,
+    UIGenerateRequest,
+    UIGenerateResponse,
+    CritiqueResponse,
+)
 from app.features.vibes.image_generator import generate_ui_prompt
 from app.core.config import get_settings
 
@@ -102,6 +109,51 @@ async def generate_ui(data: UIGenerateRequest, db: AsyncSession = Depends(get_db
         vibe_scores=vibe.scores,
     )
     return UIGenerateResponse(prompt_text=prompt_text)
+
+
+@router.post("/critique", response_model=CritiqueResponse)
+async def critique_design(
+    vibe_id: str = Form(...),
+    image: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    settings = get_settings()
+    allowed_mime_types = {"image/jpeg", "image/png", "image/webp"}
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+
+    if image.content_type not in allowed_mime_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type: {image.content_type}. Allowed: jpeg, png, webp.",
+        )
+
+    content = await image.read()
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image {image.filename} exceeds max size of {settings.max_upload_size_mb}MB.",
+        )
+
+    vibe = await service.get_vibe(db, vibe_id)
+    if not vibe:
+        raise HTTPException(status_code=404, detail="Vibe not found")
+
+    user = await service.get_default_user(db)
+    critique = await service.create_critique(
+        db=db,
+        user_id=user.id,
+        vibe_id=vibe.id,
+        image=(content, image.content_type, image.filename or "design"),
+    )
+    return CritiqueResponse(
+        id=str(critique.id),
+        vibe_id=str(critique.vibe_id),
+        scores=critique.scores or {},
+        feedback=critique.feedback or {},
+        summary=critique.summary or "",
+        status=critique.status,
+        created_at=critique.created_at,
+    )
 
 
 @router.get("/explore", response_model=list[VibeResponse])

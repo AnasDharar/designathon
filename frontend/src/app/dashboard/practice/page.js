@@ -1,26 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Image as ImageIcon, Check, Target, Lightbulb, Dot } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { FadeIn } from "@/components/motion";
-import { MOCK_VIBES, MOCK_CRITIQUES } from "@/lib/mockData";
+import { API_URL } from "@/lib/constants";
 
 export default function PracticePage() {
+  const fileInputRef = useRef(null);
+  const [vibes, setVibes] = useState([]);
   const [selectedVibe, setSelectedVibe] = useState(null);
-  const [uploaded, setUploaded] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [critique, setCritique] = useState(null);
+  const [error, setError] = useState("");
 
-  const handleAnalyze = () => {
+  useEffect(() => {
+    const loadVibes = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/vibes`);
+        if (!response.ok) throw new Error(`Failed to load vibes (${response.status})`);
+        const payload = await response.json();
+        setVibes(payload || []);
+      } catch (err) {
+        setError(err.message || "Failed to load vibes.");
+      }
+    };
+    loadVibes();
+  }, []);
+
+  const handleFileChange = (file) => {
+    setCritique(null);
+    setError("");
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file (PNG, JPG, WEBP).");
+      return;
+    }
+    setUploadedFile(file);
+  };
+
+  const handleAnalyze = async () => {
+    if (!uploadedFile || !selectedVibe) return;
     setAnalyzing(true);
-    setTimeout(() => {
-      setCritique(MOCK_CRITIQUES[0]);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("vibe_id", selectedVibe.id);
+      form.append("image", uploadedFile);
+
+      const response = await fetch(`${API_URL}/api/vibes/critique`, {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Request failed (${response.status})`);
+      }
+
+      const payload = await response.json();
+      setCritique(payload);
+    } catch (err) {
+      setError(err.message || "Failed to generate critique.");
+      setCritique(null);
+    } finally {
       setAnalyzing(false);
-    }, 3000);
+    }
   };
 
   return (
@@ -35,14 +83,22 @@ export default function PracticePage() {
           {/* Upload */}
           <Card hover={false}>
             <h3 className="text-sm font-medium text-foreground mb-4">Your Design</h3>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => handleFileChange((e.target.files || [])[0] || null)}
+            />
             <div
-              onClick={() => setUploaded(true)}
+              onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
-                uploaded ? "border-success/30 bg-success/5" : "border-border hover:border-accent/50"
+                uploadedFile ? "border-success/30 bg-success/5" : "border-border hover:border-accent/50"
               }`}
             >
-              <p className="text-3xl mb-2 flex justify-center">{uploaded ? <Check size={28} /> : <ImageIcon size={28} />}</p>
-              <p className="text-sm text-secondary">{uploaded ? "Design uploaded" : "Click to upload your design"}</p>
+              <p className="text-3xl mb-2 flex justify-center">{uploadedFile ? <Check size={28} /> : <ImageIcon size={28} />}</p>
+              <p className="text-sm text-secondary">{uploadedFile ? "Design uploaded" : "Click to upload your design"}</p>
+              {uploadedFile ? <p className="text-xs text-muted mt-2">{uploadedFile.name}</p> : null}
             </div>
           </Card>
 
@@ -50,7 +106,7 @@ export default function PracticePage() {
           <Card hover={false}>
             <h3 className="text-sm font-medium text-foreground mb-4">Target Vibe</h3>
             <div className="space-y-2">
-              {MOCK_VIBES.slice(0, 3).map((vibe) => (
+              {vibes.slice(0, 10).map((vibe) => (
                 <button key={vibe.id} onClick={() => setSelectedVibe(vibe)}
                   className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all cursor-pointer ${
                     selectedVibe?.id === vibe.id ? "bg-accent/10 border border-accent/30 text-foreground" : "bg-surface-2 border border-transparent text-secondary hover:bg-surface-3"
@@ -58,10 +114,13 @@ export default function PracticePage() {
                   {vibe.title}
                 </button>
               ))}
+              {vibes.length === 0 ? <p className="text-xs text-muted">No vibes found. Create one first.</p> : null}
             </div>
           </Card>
 
-          <Button variant="gradient" className="w-full" onClick={handleAnalyze} disabled={!uploaded || !selectedVibe || analyzing}>
+          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
+          <Button variant="gradient" className="w-full" onClick={handleAnalyze} disabled={!uploadedFile || !selectedVibe || analyzing}>
             {analyzing ? "Analyzing..." : "Get Critique"}
           </Button>
         </div>

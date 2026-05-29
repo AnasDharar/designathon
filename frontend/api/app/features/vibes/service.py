@@ -3,9 +3,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Vibe, User, VibeReference
+from app.db.models import Vibe, User, VibeReference, Critique
 from app.core.config import get_settings
-from app.features.vibes.analyzer import analyze_uploaded_images
+from app.features.vibes.analyzer import analyze_uploaded_images, critique_design_against_vibe
 
 
 async def get_default_user(db: AsyncSession) -> User:
@@ -136,3 +136,51 @@ async def create_vibe_from_uploads(
     await db.commit()
     await db.refresh(vibe)
     return vibe
+
+
+async def create_critique(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    vibe_id: uuid.UUID,
+    image: tuple[bytes, str, str],
+) -> Critique:
+    settings = get_settings()
+    content, mime_type, original_name = image
+
+    critique = Critique(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        vibe_id=vibe_id,
+        status="processing",
+    )
+    db.add(critique)
+    await db.flush()
+
+    upload_root = Path(settings.storage_path).resolve()
+    critique_dir = upload_root / "critiques" / str(critique.id)
+    try:
+        critique_dir.mkdir(parents=True, exist_ok=True)
+        suffix = ".jpg" if mime_type == "image/jpeg" else ".png" if mime_type == "image/png" else ".webp"
+        file_name = f"design_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}{suffix}"
+        file_path = critique_dir / file_name
+        file_path.write_bytes(content)
+        critique.upload_path = str(file_path)
+    except Exception:
+        critique.upload_path = None
+
+    vibe = await get_vibe(db, vibe_id)
+    result = critique_design_against_vibe(
+        image=(content, mime_type),
+        vibe_title=vibe.title if vibe else "Target Vibe",
+        vibe_description=vibe.description if vibe else None,
+        vibe_scores=vibe.scores if vibe else None,
+    )
+
+    critique.scores = result["scores"]
+    critique.feedback = result["feedback"]
+    critique.summary = result["summary"]
+    critique.status = "ready"
+
+    await db.commit()
+    await db.refresh(critique)
+    return critique
