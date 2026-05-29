@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
-from app.db.database import engine
+from app.db.database import engine, Base
 from app.features.auth.router import router as auth_router
 from app.features.vibes.router import router as vibes_router
 
@@ -14,6 +14,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Serverless-safe lifespan hook."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
 

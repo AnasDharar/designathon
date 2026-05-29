@@ -4,6 +4,8 @@ from sqlalchemy.pool import NullPool
 from app.core.config import get_settings
 
 settings = get_settings()
+if not settings.database_url:
+    raise RuntimeError("DATABASE_URL is not set")
 
 engine = create_async_engine(
     settings.database_url,
