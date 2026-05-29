@@ -1,12 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import logging
 
 from app.core.config import get_settings
 from app.db.database import engine, Base
 from app.features.auth.router import router as auth_router
 from app.features.vibes.router import router as vibes_router
 
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -14,8 +16,12 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Serverless-safe lifespan hook."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Never block API boot/health on DB availability in serverless.
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        logger.exception("Database init skipped: unable to connect at startup")
     yield
     await engine.dispose()
 
