@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Sparkles, Zap, Target, Compass } from "lucide-react";
+import { Sparkles, Zap, Target, Compass, BookOpen } from "lucide-react";
 import { Card, GlassCard } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -143,6 +143,13 @@ export default function DashboardPage() {
             description="Get AI feedback on your design work"
             href="/dashboard/practice"
             gradient="linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05))"
+          />
+          <QuickAction
+            icon={BookOpen}
+            label="Resources"
+            description="Learn design fundamentals with curated content"
+            href="/dashboard/resources"
+            gradient="linear-gradient(135deg, rgba(14,165,233,0.2), rgba(14,165,233,0.05))"
           />
         </div>
       </FadeIn>

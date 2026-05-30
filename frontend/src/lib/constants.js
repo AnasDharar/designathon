@@ -19,5 +19,6 @@ export const DASHBOARD_NAV = [
   { label: "Create Vibe", href: "/dashboard/create", icon: "plus" },
   { label: "Generate", href: "/dashboard/generate", icon: "sparkles" },
   { label: "Practice", href: "/dashboard/practice", icon: "target" },
+  { label: "Resources", href: "/dashboard/resources", icon: "BookOpen" },
   { label: "Explore", href: "/dashboard/explore", icon: "compass" },
 ];
