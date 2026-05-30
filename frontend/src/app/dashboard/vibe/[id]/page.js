@@ -1,19 +1,87 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { FadeIn } from "@/components/motion";
-import { MOCK_VIBES } from "@/lib/mockData";
-import { VIBE_AXES } from "@/lib/constants";
+import { API_URL, VIBE_AXES } from "@/lib/constants";
 import { timeAgo } from "@/lib/utils";
 
 export default function VibeDetailPage({ params }) {
   const { id } = use(params);
-  const vibe = MOCK_VIBES.find((v) => v.id === id) || MOCK_VIBES[0];
+  const [vibe, setVibe] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadVibe = async () => {
+      setIsLoading(true);
+      setError("");
+      try {
+        const response = await fetch(`${API_URL}/api/vibes/${id}`);
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || `Failed to load vibe (${response.status})`);
+        }
+        const payload = await response.json();
+        const normalized = {
+          id: payload.id,
+          title: payload.title,
+          description: payload.description || "",
+          scores: payload.scores || {
+            professionalism: 0.5,
+            warmth: 0.5,
+            originality: 0.5,
+            visualDensity: 0.5,
+            interactionEnergy: 0.5,
+            accessibilityBias: 0.5,
+          },
+          aestheticSummary: payload.aesthetic_summary || "Summary not available.",
+          isPublic: Boolean(payload.is_public),
+          referenceCount: Number(payload.reference_count || 0),
+          createdAt: payload.created_at,
+        };
+        if (mounted) setVibe(normalized);
+      } catch (err) {
+        if (mounted) setError(err.message || "Failed to load vibe.");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    loadVibe();
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card hover={false}>
+          <p className="text-sm text-secondary">Loading vibe...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !vibe) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card hover={false}>
+          <p className="text-sm text-red-400">{error || "Vibe not found."}</p>
+          <Link href="/dashboard" className="text-sm text-accent mt-3 inline-block">
+            Back to Dashboard
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
